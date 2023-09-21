@@ -1,0 +1,120 @@
+/* Interface */
+#define function claimOwnership() payable returns ()
+#define function setFavouriteNumber(uint256) nonpayable returns ()
+#define function getFavouriteNumber() view returns (uint256)
+#define function getOwner() view returns (address)
+
+/* Storage Slots */
+#define constant OWNER_SLOT = FREE_STORAGE_POINTER()
+#define constant AMOUNT_FOR_CLAIM_SLOT = FREE_STORAGE_POINTER()
+#define constant FAVOURITE_NUMBER_SLOT = FREE_STORAGE_POINTER()
+
+/* Constructor */
+#define macro CONSTRUCTOR() = takes (0) returns (0) {
+    caller [OWNER_SLOT] sstore // Store msg.sender as owner
+}
+
+/* Methods */
+#define macro CLAIM_OWNERSHIP() = takes (0) returns (0) {
+    callvalue // [value]
+    [AMOUNT_FOR_CLAIM_SLOT] sload // [amount, value]
+    lt // [value < amount]
+    is_claimable jumpi // []
+
+    // Revert if the value sent is less than the amount required to claim ownership.
+    0x00 0x00 revert
+
+    is_claimable:
+        // Store the value sent.
+        callvalue [AMOUNT_FOR_CLAIM_SLOT] sstore
+
+        // Send the ether back to the current owner using the SEND_ETH macro.
+        [OWNER_SLOT] sload // [owner]
+        callvalue // [value, owner]
+        SEND_ETH() // [success]
+        pop // []
+
+        // Store the owner.
+        caller [OWNER_SLOT] sstore
+}
+
+#define macro SET_FAVOURITE_NUMBER() = takes (0) returns (0) {
+    // Check that the sender is the owner.
+    caller                   // [msg.sender]
+    [OWNER_SLOT] sload            // [owner, msg.sender]
+    eq                       // [owner == msg.sender]
+    is_owner jumpi           // []
+
+    // Revert if the sender is not the owner
+    0x00 0x00 revert
+
+    is_owner:
+        0x04 calldataload   // [value]
+        [FAVOURITE_NUMBER_SLOT]    // [ptr, value]
+        sstore              // []
+}
+
+#define macro GET_FAVOURITE_NUMBER() = takes (0) returns (0) {
+    // Load value from storage.
+    [FAVOURITE_NUMBER_SLOT]   // [ptr]
+    sload                // [value]
+
+    // Store value in memory.
+    0x00 mstore
+
+    // Return value
+    0x20 0x00 return
+}
+
+#define macro GET_OWNER() = takes (0) returns (0) {
+    // Load value from storage.
+    [OWNER_SLOT]   // [ptr]
+    sload                // [value]
+
+    // Store value in memory.
+    0x00 mstore
+
+    // Return value
+    0x20 0x00 return
+}
+
+// https://github.com/huff-language/huffmate/blob/main/src/utils/Ethers.huff
+#define macro SEND_ETH() = takes (2) returns (1) {
+    // Input Stack: [amount, address]
+
+    // Send the ether
+    0x00    // [0, amount, address]
+    dup1    // [0, 0, amount, address]
+    dup1    // [0, 0, 0, amount, address]
+    dup1    // [0, 0, 0, 0, amount, address]
+    dup5    // [amount, 0, 0, 0, 0, amount, address]
+    dup7    // [address, amount, 0, 0, 0, 0, amount]
+    gas     // [gas, address, amount, 0, 0, 0, 0, amount, address]
+    call    // [success, amount, address]
+
+    // Clean the stack
+    swap2   // [address, amount, success]
+    pop     // [amount, success]
+    pop     // [success]
+}
+
+#define macro MAIN() = takes (0) returns (0) {
+    // Identify which function is being called.
+    0x00 calldataload 0xE0 shr
+    dup1 __FUNC_SIG(claimOwnership) eq claimOwn jumpi
+    dup1 __FUNC_SIG(setFavouriteNumber) eq setFav jumpi
+    dup1 __FUNC_SIG(getFavouriteNumber) eq getFav jumpi
+    dup1 __FUNC_SIG(getOwner) eq getOwn jumpi
+
+    0x00 0x00 revert
+
+    claimOwn:
+        CLAIM_OWNERSHIP()
+    setFav:
+        SET_FAVOURITE_NUMBER()
+    getFav:
+        GET_FAVOURITE_NUMBER()
+    getOwn:
+        GET_OWNER()
+
+}
